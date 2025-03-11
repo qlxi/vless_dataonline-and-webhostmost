@@ -9,21 +9,22 @@ const { exec, execSync } = require('child_process');
 const { WebSocket, createWebSocketStream } = require('ws');
 const logcb = (...args) => console.log.bind(this, ...args);
 const errcb = (...args) => console.error.bind(this, ...args);
-const UUID = process.env.UUID || '9f651f25-c88d-4864-8ee5-ccc4fbf2e7d2';
+const UUID = process.env.UUID || 'b28f60af-d0b9-4ddf-baaa-7e49c93c380b';
 const uuid = UUID.replace(/-/g, "");
-const NEZHA_SERVER = process.env.NEZHA_SERVER || '';
-const NEZHA_PORT = process.env.NEZHA_PORT || '443';
-const NEZHA_KEY = process.env.NEZHA_KEY || '';
-const DOMAIN = process.env.DOMAIN || '';
-const NAME = process.env.NAME || 'nxhack';
+const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';
+const NEZHA_PORT = process.env.NEZHA_PORT || '443';        // 端口为443时自动开启tls
+const NEZHA_KEY = process.env.NEZHA_KEY || '';             // 哪吒三个变量不全不运行
+const DOMAIN = process.env.DOMAIN || '';  //项目域名或已反代的域名，不带前缀，建议填已反代的域名
+const NAME = process.env.NAME || 'JP-webhostmost-GCP';
 const port = process.env.PORT || 3000;
 
+// 创建HTTP路由
 const httpServer = http.createServer((req, res) => {
   if (req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Hello, World\n');
   } else if (req.url === '/sub') {
-    const vlessURL = `vless://${UUID}@kick.com:443?encryption=none&security=tls&sni=${DOMAIN}&type=ws&host=${DOMAIN}&path=%2F#${NAME}`;
+    const vlessURL = `vless://${UUID}@skk.moe:443?encryption=none&security=tls&sni=${DOMAIN}&type=ws&host=${DOMAIN}&path=%2F#${NAME}`;
     
     const base64Content = Buffer.from(vlessURL).toString('base64');
 
@@ -39,6 +40,7 @@ httpServer.listen(port, () => {
   console.log(`HTTP Server is running on port ${port}`);
 });
 
+// 判断系统架构
 function getSystemArchitecture() {
   const arch = os.arch();
   if (arch === 'arm' || arch === 'arm64') {
@@ -48,6 +50,7 @@ function getSystemArchitecture() {
   }
 }
 
+// 下载对应系统架构的ne-zha
 function downloadFile(fileName, fileUrl, callback) {
   const filePath = path.join("./", fileName);
   const writer = fs.createWriteStream(filePath);
@@ -111,6 +114,7 @@ function getFilesForArchitecture(architecture) {
   return [];
 }
 
+// 授权并运行ne-zha
 function authorizeFiles() {
   const filePath = './npm';
   const newPermissions = 0o775;
@@ -143,19 +147,20 @@ function authorizeFiles() {
 }
 downloadFiles();
 
+// WebSocket 服务器
 const wss = new WebSocket.Server({ server: httpServer });
 wss.on('connection', ws => {
-  console.log("WebSocket соединение установлено");
+  console.log("WebSocket 连接成功");
   ws.on('message', msg => {
     if (msg.length < 18) {
-      console.error("Недопустимая длина данных");
+      console.error("数据长度无效");
       return;
     }
     try {
       const [VERSION] = msg;
       const id = msg.slice(1, 17);
       if (!id.every((v, i) => v == parseInt(uuid.substr(i * 2, 2), 16))) {
-        console.error("Ошибка проверки UUID");
+        console.error("UUID 验证失败");
         return;
       }
       let i = msg.slice(17, 18).readUInt8() + 19;
@@ -164,16 +169,15 @@ wss.on('connection', ws => {
       const host = ATYP === 1 ? msg.slice(i, i += 4).join('.') :
         (ATYP === 2 ? new TextDecoder().decode(msg.slice(i + 1, i += 1 + msg.slice(i, i + 1).readUInt8())) :
           (ATYP === 3 ? msg.slice(i, i += 16).reduce((s, b, i, a) => (i % 2 ? s.concat(a.slice(i - 1, i + 1)) : s), []).map(b => b.readUInt16BE(0).toString(16)).join(':') : ''));
-      console.log('Подключение к:', host, port);
+      console.log('连接到:', host, port);
       ws.send(new Uint8Array([VERSION, 0]));
       const duplex = createWebSocketStream(ws);
       net.connect({ host, port }, function () {
         this.write(msg.slice(i));
         duplex.on('error', err => console.error("E1:", err.message)).pipe(this).on('error', err => console.error("E2:", err.message)).pipe(duplex);
-      }).on('error', err => console.error("Ошибка подключения:", err.message));
+      }).on('error', err => console.error("连接错误:", err.message));
     } catch (err) {
-      console.error("Ошибка при обработке сообщения:", err.message);
+      console.error("处理消息时出错:", err.message);
     }
-  }).on('error', err => console.error("Ошибка WebSocket:", err.message));
+  }).on('error', err => console.error("WebSocket 错误:", err.message));
 });
-
